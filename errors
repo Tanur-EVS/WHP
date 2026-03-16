@@ -1,0 +1,30 @@
+PS C:\Users\Tanur.Yadav\Documents\WHR> py -3.11 -c "import cadquery; print('found in 3.11')"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'cadquery'
+PS C:\Users\Tanur.Yadav\Documents\WHR> py -3.14 -c "import cadquery; print('found in 3.14')"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import cadquery; print('found in 3.14')
+    ^^^^^^^^^^^^^^^
+  File "C:\Users\Tanur.Yadav\AppData\Local\Programs\Python\Python314\Lib\site-packages\cadquery\__init__.py", line 10, in <module>
+    from .occ_impl.geom import Plane, BoundBox, Vector, Matrix, Location
+  File "C:\Users\Tanur.Yadav\AppData\Local\Programs\Python\Python314\Lib\site-packages\cadquery\occ_impl\geom.py", line 5, in <module>
+    from OCP.gp import (
+    ...<11 lines>...
+    )
+ModuleNotFoundError: No module named 'OCP'
+PS C:\Users\Tanur.Yadav\Documents\WHR> python -c "import cadquery; print('found')"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import cadquery; print('found')
+    ^^^^^^^^^^^^^^^
+  File "C:\Users\Tanur.Yadav\AppData\Local\Programs\Python\Python314\Lib\site-packages\cadquery\__init__.py", line 10, in <module>
+    from .occ_impl.geom import Plane, BoundBox, Vector, Matrix, Location
+  File "C:\Users\Tanur.Yadav\AppData\Local\Programs\Python\Python314\Lib\site-packages\cadquery\occ_impl\geom.py", line 5, in <module>
+    from OCP.gp import (
+    ...<11 lines>...
+    )
+ModuleNotFoundError: No module named 'OCP'
+PS C:\Users\Tanur.Yadav\Documents\WHR> python3 -c "import cadquery; print('found')"
+Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
