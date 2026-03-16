@@ -1,0 +1,246 @@
+from typing import Optional
+from google.api_core.client_options import ClientOptions
+from google.cloud import documentai
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+import cadquery as cq
+import os
+
+# ── CONFIG ────────────────────────────────────────────────────────────────────
+PROJECT_ID          = "YOUR_PROJECT_ID"
+LOCATION            = "us"               # "us" or "eu"
+PROCESSOR_ID        = "YOUR_PROCESSOR_ID"
+PROCESSOR_VERSION_ID = None              # Optional — leave None to use default
+
+PDF_FILE_PATH       = "Metal_Sample_8318088.pdf"
+STP_FILE_PATH       = "Metal_Sample.stp"
+
+# Material density in kg/mm³ — change based on material
+# Common values:
+#   Stainless Steel (430): 7.75 g/cm³ → 7.75e-6 kg/mm³
+#   Mild Steel:            7.85 g/cm³ → 7.85e-6 kg/mm³
+#   Aluminium:             2.70 g/cm³ → 2.70e-6 kg/mm³
+#   Brass:                 8.50 g/cm³ → 8.50e-6 kg/mm³
+DENSITY_KG_PER_MM3  = 7.75e-6           # Type 430 Stainless Steel
+
+OUTPUT_EXCEL_PATH   = "parts_output.xlsx"
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def extract_material_from_pdf(
+    pdf_path: str,
+    project_id: str,
+    location: str,
+    processor_id: str,
+    processor_version_id: Optional[str] = None,
+) -> dict:
+    """Send PDF to Document AI custom processor and extract entity fields."""
+
+    opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+    client = documentai.DocumentProcessorServiceClient(client_options=opts)
+
+    if processor_version_id:
+        name = client.processor_version_path(
+            project_id, location, processor_id, processor_version_id
+        )
+    else:
+        name = client.processor_path(project_id, location, processor_id)
+
+    with open(pdf_path, "rb") as f:
+        image_content = f.read()
+
+    raw_document = documentai.RawDocument(
+        content=image_content,
+        mime_type="application/pdf"
+    )
+
+    process_options = documentai.ProcessOptions(
+        individual_page_selector=documentai.ProcessOptions.IndividualPageSelector(
+            pages=[1]
+        )
+    )
+
+    request = documentai.ProcessRequest(
+        name=name,
+        raw_document=raw_document,
+        field_mask="text,entities",
+        process_options=process_options,
+    )
+
+    result = client.process_document(request=request)
+    document = result.document
+
+    # Extract all entities returned by the custom processor
+    extracted = {}
+    for entity in document.entities:
+        field_name  = entity.type_.strip()
+        field_value = entity.mention_text.strip()
+        confidence  = round(entity.confidence, 4)
+        extracted[field_name] = {
+            "value": field_value,
+            "confidence": confidence
+        }
+
+    return extracted
+
+
+def extract_weight_from_stp(stp_path: str, density_kg_per_mm3: float) -> dict:
+    """Load a STEP file with CadQuery and calculate volume, bounding box, and weight."""
+
+    shape = cq.importers.importStep(stp_path)
+    solid = shape.val()
+
+    # Volume in mm³
+    volume_mm3 = solid.Volume()
+
+    # Weight in kg
+    weight_kg = volume_mm3 * density_kg_per_mm3
+
+    # Bounding box dimensions in mm
+    bb = solid.BoundingBox()
+    dimensions = {
+        "length_mm": round(bb.xlen, 3),
+        "width_mm":  round(bb.ylen, 3),
+        "height_mm": round(bb.zlen, 3),
+    }
+
+    return {
+        "volume_mm3": round(volume_mm3, 4),
+        "weight_kg":  round(weight_kg, 6),
+        "dimensions": dimensions,
+    }
+
+
+def write_to_excel(
+    material_data: dict,
+    stp_data: dict,
+    pdf_filename: str,
+    stp_filename: str,
+    output_path: str,
+) -> None:
+    """Write all extracted fields into a formatted Excel file."""
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Parts Data"
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    header_font    = Font(name="Arial", bold=True, color="FFFFFF", size=11)
+    header_fill    = PatternFill("solid", fgColor="2E4057")
+    section_font   = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+    section_fill   = PatternFill("solid", fgColor="048A81")
+    cell_font      = Font(name="Arial", size=10)
+    label_font     = Font(name="Arial", bold=True, size=10)
+    center_align   = Alignment(horizontal="center", vertical="center")
+    left_align     = Alignment(horizontal="left",   vertical="center")
+
+    def set_header(cell, value):
+        cell.value     = value
+        cell.font      = header_font
+        cell.fill      = header_fill
+        cell.alignment = center_align
+
+    def set_section(cell, value):
+        cell.value     = value
+        cell.font      = section_font
+        cell.fill      = section_fill
+        cell.alignment = left_align
+
+    def set_label(cell, value):
+        cell.value     = value
+        cell.font      = label_font
+        cell.alignment = left_align
+
+    def set_value(cell, value):
+        cell.value     = value
+        cell.font      = cell_font
+        cell.alignment = left_align
+
+    # ── Title row ─────────────────────────────────────────────────────────────
+    ws.merge_cells("A1:D1")
+    set_header(ws["A1"], "Parts Extraction Report")
+    ws.row_dimensions[1].height = 28
+
+    # ── Column headers ────────────────────────────────────────────────────────
+    ws.row_dimensions[2].height = 20
+    for col, label in enumerate(["Field", "Value", "Confidence", "Source"], 1):
+        set_header(ws.cell(row=2, column=col), label)
+
+    row = 3
+
+    # ── Section: Document AI (PDF) ────────────────────────────────────────────
+    ws.merge_cells(f"A{row}:D{row}")
+    set_section(ws[f"A{row}"], f"  Document AI Extraction  ←  {os.path.basename(pdf_filename)}")
+    ws.row_dimensions[row].height = 18
+    row += 1
+
+    if material_data:
+        for field, info in material_data.items():
+            set_label(ws.cell(row=row, column=1), field)
+            set_value(ws.cell(row=row, column=2), info["value"])
+            set_value(ws.cell(row=row, column=3), f"{info['confidence'] * 100:.1f}%")
+            set_value(ws.cell(row=row, column=4), "Document AI")
+            row += 1
+    else:
+        set_value(ws.cell(row=row, column=1), "No entities returned")
+        row += 1
+
+    # ── Section: CadQuery (STP) ───────────────────────────────────────────────
+    ws.merge_cells(f"A{row}:D{row}")
+    set_section(ws[f"A{row}"], f"  CadQuery Extraction  ←  {os.path.basename(stp_filename)}")
+    ws.row_dimensions[row].height = 18
+    row += 1
+
+    stp_fields = [
+        ("Weight (kg)",     stp_data["weight_kg"],               "—", "CadQuery (.stp)"),
+        ("Volume (mm³)",    stp_data["volume_mm3"],               "—", "CadQuery (.stp)"),
+        ("Length (mm)",     stp_data["dimensions"]["length_mm"],  "—", "CadQuery (.stp)"),
+        ("Width (mm)",      stp_data["dimensions"]["width_mm"],   "—", "CadQuery (.stp)"),
+        ("Height (mm)",     stp_data["dimensions"]["height_mm"],  "—", "CadQuery (.stp)"),
+        ("Density (kg/mm³)", DENSITY_KG_PER_MM3,                 "—", "Config"),
+    ]
+
+    for field, value, conf, source in stp_fields:
+        set_label(ws.cell(row=row, column=1), field)
+        set_value(ws.cell(row=row, column=2), value)
+        set_value(ws.cell(row=row, column=3), conf)
+        set_value(ws.cell(row=row, column=4), source)
+        row += 1
+
+    # ── Column widths ─────────────────────────────────────────────────────────
+    ws.column_dimensions["A"].width = 30
+    ws.column_dimensions["B"].width = 45
+    ws.column_dimensions["C"].width = 15
+    ws.column_dimensions["D"].width = 25
+
+    wb.save(output_path)
+    print(f"Excel saved → {output_path}")
+
+
+# ── MAIN ──────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+
+    print("Step 1/3 — Extracting material from PDF via Document AI...")
+    material_data = extract_material_from_pdf(
+        pdf_path             = PDF_FILE_PATH,
+        project_id           = PROJECT_ID,
+        location             = LOCATION,
+        processor_id         = PROCESSOR_ID,
+        processor_version_id = PROCESSOR_VERSION_ID,
+    )
+    print(f"  → Extracted {len(material_data)} field(s): {list(material_data.keys())}")
+
+    print("Step 2/3 — Extracting weight & dimensions from .stp via CadQuery...")
+    stp_data = extract_weight_from_stp(STP_FILE_PATH, DENSITY_KG_PER_MM3)
+    print(f"  → Weight: {stp_data['weight_kg']} kg | Volume: {stp_data['volume_mm3']} mm³")
+
+    print("Step 3/3 — Writing to Excel...")
+    write_to_excel(
+        material_data = material_data,
+        stp_data      = stp_data,
+        pdf_filename  = PDF_FILE_PATH,
+        stp_filename  = STP_FILE_PATH,
+        output_path   = OUTPUT_EXCEL_PATH,
+    )
+
+    print("\nDone! Open parts_output.xlsx to review.")
