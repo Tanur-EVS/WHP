@@ -1,0 +1,33 @@
+import cadquery as cq
+ 
+result = cq.importers.importStep("Metal Sample - 8318088.stp")
+shape = result.val()
+print(shape)
+
+volume = shape.Volume()
+print(f"Volume: {volume} mm³")
+print(f"Center of Mass: {shape.Center()}")
+print(f"Bounding Box: {shape.BoundingBox()}")
+ 
+print(f"\nFaces: {result.faces().size()}")
+print(f"Edges: {result.edges().size()}")
+print(f"Vertices: {result.vertices().size()}")
+print(f"Solids: {result.solids().size()}")
+print(f"Shells: {result.shells().size()}")
+print(f"Wires: {result.wires().size()}")
+ 
+print(f"\nSurface Area: {sum(f.Area() for f in result.faces().vals())} mm²")
+print(f"Total Edge Length: {sum(e.Length() for e in result.edges().vals())} mm")
+ 
+# Weight calculation (assuming steel density)
+density_steel = 7.85e-3  # g/mm³
+weight_grams = volume * density_steel
+weight_kg = weight_grams / 1000
+ 
+print(f"\nWeight (Steel, 7.85 g/cm³): {weight_grams:.2f} g ({weight_kg:.4f} kg)")
+ 
+print("\nFace Areas:")
+for i, f in enumerate(result.faces().vals()[:10]):
+    print(f"  Face {i+1}: {f.Area():.4f}")
+if result.faces().size() > 10:
+    print(f"  ... and {result.faces().size() - 10} more faces")
