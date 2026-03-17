@@ -1,29 +1,34 @@
-& c:\Users\Tanur.Yadav\Documents\WHR\env\Scripts\Activate.ps1
-& : File C:\Users\Tanur.Yadav\Documents\WHR\env\Scripts\Activate.ps1 cannot be loaded because running scripts is disabled 
-on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.
-At line:1 char:3
-+ & c:\Users\Tanur.Yadav\Documents\WHR\env\Scripts\Activate.ps1
-+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : SecurityError: (:) [], PSSecurityException
-    + FullyQualifiedErrorId : UnauthorizedAccess
-PS C:\Users\Tanur.Yadav\Documents\WHR> & c:\Users\Tanur.Yadav\Documents\WHR\env\Scripts\python.exe c:/Users/Tanur.Yadav/Documents/WHR/final.py
-Step 1/3 — Extracting material from PDF via Document AI...
+c:\Users\Tanur.Yadav\Documents\WHR\model_testing.py:1: FutureWarning: 
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving 
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  import google.generativeai as genai
+Step 1/3 — Converting PDF to image...
 Traceback (most recent call last):
-  File "c:\Users\Tanur.Yadav\Documents\WHR\final.py", line 216, in <module>
-    material_data = extract_material_from_pdf(
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\Users\Tanur.Yadav\Documents\WHR\final.py", line 32, in extract_material_from_pdf
-    client = documentai.DocumentProcessorServiceClient(client_options=opts)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Tanur.Yadav\Documents\WHR\env\Lib\site-packages\google\cloud\documentai_v1\services\document_processor_service\client.py", line 815, in __init__
-    self._transport = transport_init(
-                      ^^^^^^^^^^^^^^^
-  File "C:\Users\Tanur.Yadav\Documents\WHR\env\Lib\site-packages\google\cloud\documentai_v1\services\document_processor_service\transports\grpc.py", line 246, in __init__
-    super().__init__(
-  File "C:\Users\Tanur.Yadav\Documents\WHR\env\Lib\site-packages\google\cloud\documentai_v1\services\document_processor_service\transports\base.py", line 113, in __init__
-    credentials, _ = google.auth.default(
-                     ^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Tanur.Yadav\Documents\WHR\env\Lib\site-packages\google\auth\_default.py", line 752, in default
-    raise exceptions.DefaultCredentialsError(_CLOUD_SDK_MISSING_CREDENTIALS)
-google.auth.exceptions.DefaultCredentialsError: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+  File "C:\Users\Tanur.Yadav\Documents\WHR\env\Lib\site-packages\pdf2image\pdf2image.py", line 581, in pdfinfo_from_path
+    proc = Popen(command, env=env, stdout=PIPE, stderr=PIPE)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tanur.Yadav\AppData\Local\Programs\Python\Python311\Lib\subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "C:\Users\Tanur.Yadav\AppData\Local\Programs\Python\Python311\Lib\subprocess.py", line 1538, in _execute_child      
+    hp, ht, pid, tid = _winapi.CreateProcess(executable, args,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 2] The system cannot find the file specified
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "c:\Users\Tanur.Yadav\Documents\WHR\model_testing.py", line 16, in <module>
+    pages = convert_from_path(PDF_FILE_PATH, dpi=300)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tanur.Yadav\Documents\WHR\env\Lib\site-packages\pdf2image\pdf2image.py", line 127, in convert_from_path   
+    page_count = pdfinfo_from_path(
+                 ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tanur.Yadav\Documents\WHR\env\Lib\site-packages\pdf2image\pdf2image.py", line 607, in pdfinfo_from_path   
+    raise PDFInfoNotInstalledError(
+pdf2image.exceptions.PDFInfoNotInstalledError: Unable to get page count. Is poppler installed and in PATH?
 PS C:\Users\Tanur.Yadav\Documents\WHR> 
