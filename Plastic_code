@@ -7,7 +7,7 @@ import base64
 import json
 
 # ── CONFIG ────────────────────────────────────────────────────────
-GEMINI_API_KEY = "AIzaSyBkyL0c4c8dANrKLTq3o0MVhIhc9c2qwig"
+GEMINI_API_KEY = ""
 PDF_FILE_PATH  = r"C:\Users\Tanur.Yadav\Documents\WHR\w11791015_A6.pdf"
 OUTPUT_EXCEL   = r"C:\Users\Tanur.Yadav\Documents\WHR\plastic_output.xlsx"
 # ─────────────────────────────────────────────────────────────────
