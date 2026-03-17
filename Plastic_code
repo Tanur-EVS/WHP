@@ -1,84 +1,59 @@
-# REPLACE
-for part in parts:
-    ws = wb.create_sheet(title=part["part_number"])
-    ws.column_dimensions["A"].width = 25
-    ws.column_dimensions["B"].width = 45
+prompt = """
+This is a CAD 2D engineering drawing BOM table at the bottom of the page.
 
-    current_row = 1
+The table columns from left to right are:
+- PART NO (main part number e.g. W11791017)
+- REV (e.g. A)
+- DESCRIPTION (e.g. POCKET ADHESIVE HANDLE ASSY,BLK)
+- NEUTRAL PART NO — ignore this column completely
+- INDEX 1 sub-component (e.g. W11791013 → PROSTAR POCKET PANEL)
+- QTY — ignore
+- INDEX 2 sub-component (e.g. W11242122 → POCKET HANDLE)
+- QTY — ignore
+- ignore all remaining columns (INDEX 3, INDEX 4 etc.)
 
-    current_row = write_part_details_table(
-        ws, current_row,
-        part["part_number"],
-        part["description"]
-    )
+STRICT RULES:
+- Each part has EXACTLY 2 sub-components — INDEX 1 and INDEX 2 only
+- The third table must ALWAYS be the main part number itself
+- Do NOT include W11480174, W10189731 or any other index 3/4 numbers
 
-    for sub in part["sub_components"]:
-        current_row = write_part_details_table(
-            ws, current_row,
-            sub["part_number"],
-            sub["description"]
-        )
-
-# WITH
-for part in reversed(parts):   # ← reversed so W11791017 is first sheet
-    ws = wb.create_sheet(title=part["part_number"])
-
-    # Tables side by side — each table starts at column offset
-    # Table 1 = sub[0] starts at col A
-    # Table 2 = sub[1] starts at col D
-    # Table 3 = main part starts at col G
-
-    tables = part["sub_components"] + [{"part_number": part["part_number"], "description": part["description"]}]
-
-    for t_idx, table in enumerate(tables):
-        start_col = 1 + (t_idx * 3)  # A=1, D=4, G=7 (gap of 3 columns per table)
-        write_part_details_table(ws, row=1, col=start_col,
-                                 part_number=table["part_number"],
-                                 description=table["description"])
-
-
-
-
-
-
-# REPLACE the whole function with this
-def write_part_details_table(ws, row, col, part_number, description):
-    section_font = Font(name="Arial", bold=True, color="FFFFFF", size=10)
-    section_fill = PatternFill("solid", fgColor="4472C4")
-    label_font   = Font(name="Arial", bold=True, size=10)
-    value_font   = Font(name="Arial", size=10)
-    left_align   = Alignment(horizontal="left", vertical="center")
-
-    # Section header spanning 2 columns
-    ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col+1)
-    cell           = ws.cell(row=row, column=col)
-    cell.value     = "Part Details"
-    cell.font      = section_font
-    cell.fill      = section_fill
-    cell.alignment = left_align
-    ws.row_dimensions[row].height = 18
-
-    # Part Number row
-    ws.cell(row=row+1, column=col,   value="Part Number").font = label_font
-    ws.cell(row=row+1, column=col+1, value=part_number).font   = value_font
-
-    # Description row
-    ws.cell(row=row+2, column=col,   value="Description").font = label_font
-    ws.cell(row=row+2, column=col+1, value=description).font   = value_font
-
-    # Set column widths
-    from openpyxl.utils import get_column_letter
-    ws.column_dimensions[get_column_letter(col)].width   = 20
-    ws.column_dimensions[get_column_letter(col+1)].width = 35
-```
-
----
-
-## What Each Sheet Will Look Like
-```
-| Part Details  |              | | Part Details  |              | | Part Details   |                         |
-|---------------|              | |---------------|              | |----------------|                         |
-| Part Number   | W11791013    | | Part Number   | W11242122    | | Part Number    | W11791017               |
-| Description   | PROSTAR...   | | Description   | POCKET...    | | Description    | POCKET ADHESIVE ASSY BLK|
-
-      Table 1 (sub 1)                Table 2 (sub 2)                  Table 3 (main part)
+Return as JSON only, no extra text, no markdown, no backticks:
+[
+    {
+        "part_number": "W11791017",
+        "rev": "A",
+        "description": "POCKET ADHESIVE HANDLE ASSY,BLK",
+        "sub_components": [
+            {"part_number": "W11791013", "description": "PROSTAR POCKET PANEL"},
+            {"part_number": "W11242122", "description": "POCKET HANDLE"}
+        ]
+    },
+    {
+        "part_number": "W11791018",
+        "rev": "A",
+        "description": "POCKET ADHESIVE HANDLE ASSY,WHT",
+        "sub_components": [
+            {"part_number": "W11791014", "description": "PROSTAR POCKET PANEL"},
+            {"part_number": "W11242123", "description": "POCKET HANDLE"}
+        ]
+    },
+    {
+        "part_number": "W11796808",
+        "rev": "A",
+        "description": "POCKET ADHESIVE HANDLE ASSY,UNI SILVER",
+        "sub_components": [
+            {"part_number": "W11796805", "description": "PROSTAR POCKET PANEL"},
+            {"part_number": "W11242124", "description": "POCKET HANDLE"}
+        ]
+    },
+    {
+        "part_number": "W11796809",
+        "rev": "A",
+        "description": "POCKET ADHESIVE HANDLE ASSY,BIS",
+        "sub_components": [
+            {"part_number": "W11796806", "description": "PROSTAR POCKET PANEL"},
+            {"part_number": "W11242125", "description": "POCKET HANDLE"}
+        ]
+    }
+]
+"""
