@@ -1,28 +1,46 @@
-import google.generativeai as genai
-from pdf2image import convert_from_path
+from google import genai
+from google.genai import types
+import fitz
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 import base64
 import json
 
 # ── CONFIG ────────────────────────────────────────────────────────
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
-PDF_FILE_PATH  = r"C:\Users\Tanur.Yadav\Documents\WHR\your_cad_file.pdf"
-OUTPUT_EXCEL   = r"C:\Users\Tanur.Yadav\Documents\WHR\parts_output.xlsx"
+GEMINI_API_KEY = "AIzaSyBkyL0c4c8dANrKLTq3o0MVhIhc9c2qwig"
+PDF_FILE_PATH  = r"C:\Users\Tanur.Yadav\Documents\WHR\w11791015_A6.pdf"
+OUTPUT_EXCEL   = r"C:\Users\Tanur.Yadav\Documents\WHR\plastic_output.xlsx"
 # ─────────────────────────────────────────────────────────────────
 
 # ── STEP 1: Convert PDF to PNG ────────────────────────────────────
 print("Step 1/3 — Converting PDF to image...")
-pages = convert_from_path(PDF_FILE_PATH, dpi=300)
-image_path = "temp_page.png"
-pages[0].save(image_path, "PNG")
+doc = fitz.open(PDF_FILE_PATH)
+page = doc[0]
+mat = fitz.Matrix(300/72, 300/72)
+pix = page.get_pixmap(matrix=mat)
+pix.tobytes("png")
 
 # ── STEP 2: Send to Gemini ────────────────────────────────────────
 print("Step 2/3 — Extracting parts via Gemini...")
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-pro")
+Client = genai.Client(api_key=GEMINI_API_KEY)
+response = client.models.generate_content(
+    model = "gemini-3.1-pro=preview",
+    contents=[
+        types.Content(
+            parts=[
+                types.Part(
+                    inline_data=types.Blob(
+                        mime_type = "image/png",
+                        data=image_data
+                    )
+                ),
+                types.Part(text=prompt)
+            ]
+        )
+    ]
+)
 
-with open(image_path, "rb") as f:
+with open("png", "rb") as f:
     image_data = base64.b64encode(f.read()).decode("utf-8")
 
 prompt = """
