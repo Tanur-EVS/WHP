@@ -1,0 +1,250 @@
+from google import genai
+from google.genai import types
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+import cadquery as cq
+import pandas as pd
+import fitz
+import base64
+import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ── CONFIG ────────────────────────────────────────────────────────────────────
+GEMINI_API_KEY       =
+PDF_FILE_PATH        =
+STP_FILE_PATH        =
+BOM_LOADER_FILE_PATH =
+DENSITY_KG_PER_MM3   =       # e.g. 7.75e-6 for Type 430 Stainless Steel
+OUTPUT_EXCEL_PATH    =
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def extract_material_from_pdf(pdf_path: str) -> dict:
+    """Convert PDF to image and send to Gemini to extract material and other fields."""
+
+    # Step 1 — PDF to image
+    doc        = fitz.open(pdf_path)
+    page       = doc[0]
+    mat        = fitz.Matrix(300/72, 300/72)
+    pix        = page.get_pixmap(matrix=mat)
+    image_data = base64.b64encode(pix.tobytes("png")).decode("utf-8")
+
+    # Step 2 — Send to Gemini
+    prompt = """
+    This is a scanned CAD technical drawing.
+    Extract the following fields from the NOTES section or title block:
+    - Material (e.g. TYPE 430 STAINLESS STEEL)
+    - Any other specifications mentioned under NOTES
+
+    Return as JSON only, no extra text, no markdown, no backticks:
+    {
+        "Material": "extracted material value here",
+        "Notes": "any other notes here"
+    }
+    """
+
+    client   = genai.Client(api_key=GEMINI_API_KEY)
+    response = client.models.generate_content(
+        model="gemini-3.1-pro-preview",
+        contents=[
+            types.Content(
+                parts=[
+                    types.Part(
+                        inline_data=types.Blob(
+                            mime_type="image/png",
+                            data=image_data
+                        )
+                    ),
+                    types.Part(text=prompt)
+                ]
+            )
+        ]
+    )
+
+    extracted_raw = json.loads(response.text)
+
+    # Format to match original structure {field: {value, confidence}}
+    extracted = {}
+    for field, value in extracted_raw.items():
+        extracted[field] = {
+            "value":      str(value).strip(),
+            "confidence": None
+        }
+
+    return extracted
+
+
+def extract_info_from_bom(bom_loader_file_path: str) -> dict:
+    """Extract part details from BOM Loader Excel file."""
+
+    data = pd.read_excel(bom_loader_file_path, header=4)
+    data.dropna(axis=0, how="all", inplace=True)
+    data = data.iloc[4:].reset_index(drop=True)
+    data = data[data["Part Number"].notna()]
+    data = data[data["Part Number"].astype(str).str.startswith("W")]
+
+    row = data.iloc[0]   # take first matching part row
+
+    vpe       = str(row["VPE"]).strip()
+    econ_date = str(row["Economic Date"]).strip()
+
+    return {
+        "Part No":              str(row["Part Number"]).strip(),
+        "Description":          str(row["Description"]).strip(),
+        "Annual Volume":        row["Production Volume"],
+        "Manufacturing Region": f"{vpe} {econ_date}".replace("nan", "").strip(),
+        "Cost Currency":        "USD",
+    }
+
+
+def extract_weight_from_stp(stp_path: str, density_kg_per_mm3: float) -> dict:
+    """Load STEP file with CadQuery and calculate weight."""
+
+    shape      = cq.importers.importStep(stp_path)
+    volume_mm3 = shape.val().Volume()
+    weight_kg  = volume_mm3 * density_kg_per_mm3
+    bb         = shape.val().BoundingBox()
+
+    return {
+        "weight_kg":  round(weight_kg, 6),
+        "volume_mm3": round(volume_mm3, 4),
+        "dimensions": {
+            "x_mm": round(bb.xlen, 3),
+            "y_mm": round(bb.ylen, 3),
+            "z_mm": round(bb.zlen, 3),
+        }
+    }
+
+
+def write_to_excel(
+    material_data: dict,
+    stp_data:      dict,
+    bom_data:      dict,
+    output_path:   str,
+) -> None:
+    """Write all extracted fields into a formatted Excel file."""
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Parts Data"
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    header_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
+    header_fill  = PatternFill("solid", fgColor="2E4057")
+    section_font = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+    section_fill = PatternFill("solid", fgColor="048A81")
+    cell_font    = Font(name="Arial", size=10)
+    label_font   = Font(name="Arial", bold=True, size=10)
+    center_align = Alignment(horizontal="center", vertical="center")
+    left_align   = Alignment(horizontal="left",   vertical="center")
+
+    def set_header(cell, value):
+        cell.value     = value
+        cell.font      = header_font
+        cell.fill      = header_fill
+        cell.alignment = center_align
+
+    def set_section(cell, value):
+        cell.value     = value
+        cell.font      = section_font
+        cell.fill      = section_fill
+        cell.alignment = left_align
+
+    def set_label(cell, value):
+        cell.value     = value
+        cell.font      = label_font
+        cell.alignment = left_align
+
+    def set_value(cell, value):
+        cell.value     = value
+        cell.font      = cell_font
+        cell.alignment = left_align
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    ws.merge_cells("A1:B1")
+    set_header(ws["A1"], "Parts Extraction Report")
+    ws.row_dimensions[1].height = 28
+
+    # ── Column headers ────────────────────────────────────────────────────────
+    ws.row_dimensions[2].height = 20
+    for col, label in enumerate(["Field", "Value"], 1):
+        set_header(ws.cell(row=2, column=col), label)
+
+    row = 3
+
+    # ── Section: Gemini (PDF) ─────────────────────────────────────────────────
+    ws.merge_cells(f"A{row}:B{row}")
+    set_section(ws[f"A{row}"], "Material Info — from PDF (Gemini)")
+    ws.row_dimensions[row].height = 18
+    row += 1
+
+    if material_data:
+        for field, info in material_data.items():
+            set_label(ws.cell(row=row, column=1), field)
+            set_value(ws.cell(row=row, column=2), info["value"])
+            row += 1
+    else:
+        set_value(ws.cell(row=row, column=1), "No fields extracted")
+        row += 1
+
+    # ── Section: CadQuery (STP) ───────────────────────────────────────────────
+    ws.merge_cells(f"A{row}:B{row}")
+    set_section(ws[f"A{row}"], "Weight Info — from STP (CadQuery)")
+    ws.row_dimensions[row].height = 18
+    row += 1
+
+    stp_fields = [
+        ("Weight (kg)",      stp_data["weight_kg"]),
+        ("Density (kg/mm³)", DENSITY_KG_PER_MM3),
+    ]
+    for field, value in stp_fields:
+        set_label(ws.cell(row=row, column=1), field)
+        set_value(ws.cell(row=row, column=2), value)
+        row += 1
+
+    # ── Section: BOM Loader ───────────────────────────────────────────────────
+    ws.merge_cells(f"A{row}:B{row}")
+    set_section(ws[f"A{row}"], "Part Info — from BOM Loader")
+    ws.row_dimensions[row].height = 18
+    row += 1
+
+    for field, value in bom_data.items():
+        set_label(ws.cell(row=row, column=1), field)
+        set_value(ws.cell(row=row, column=2), value)
+        row += 1
+
+    # ── Column widths ─────────────────────────────────────────────────────────
+    ws.column_dimensions["A"].width = 30
+    ws.column_dimensions["B"].width = 45
+
+    wb.save(output_path)
+    print(f"Excel saved → {output_path}")
+
+
+# ── MAIN ──────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+
+    print("Step 1/3 — Extracting material from PDF via Gemini...")
+    material_data = extract_material_from_pdf(PDF_FILE_PATH)
+    print(f"  → Extracted: {list(material_data.keys())}")
+
+    print("Step 2/3 — Extracting weight from .stp via CadQuery...")
+    stp_data = extract_weight_from_stp(STP_FILE_PATH, DENSITY_KG_PER_MM3)
+    print(f"  → Weight: {stp_data['weight_kg']} kg")
+
+    print("Step 3/3 — Reading BOM Loader file...")
+    bom_data = extract_info_from_bom(BOM_LOADER_FILE_PATH)
+    print(f"  → Part: {bom_data['Part No']} | Volume: {bom_data['Annual Volume']}")
+
+    print("Step 4/3 — Writing to Excel...")
+    write_to_excel(
+        material_data = material_data,
+        stp_data      = stp_data,
+        bom_data      = bom_data,
+        output_path   = OUTPUT_EXCEL_PATH,
+    )
+
+    print("\nDone! Open the Excel file to review.")
