@@ -4,28 +4,36 @@ from google.cloud import documentai
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 import cadquery as cq
+import pandas as pd
+import numpy as np
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-PROJECT_ID          = "YOUR_PROJECT_ID"
-LOCATION            = "us"               # "us" or "eu"
-PROCESSOR_ID        = "YOUR_PROCESSOR_ID"
-PROCESSOR_VERSION_ID = None              # Optional — leave None to use default
+PROJECT_ID          = 
+LOCATION            = # "us" or "eu"
+PROCESSOR_ID        = 
+PROCESSOR_VERSION_ID =              # Optional — leave None to use default
 
-PDF_FILE_PATH       = "Metal_Sample_8318088.pdf"
-STP_FILE_PATH       = "Metal_Sample.stp"
+PDF_FILE_PATH       = 
+STP_FILE_PATH       = 
+BOM_LOADER_FILE_PATH = 
 
-# Material density in kg/mm³ — change based on material
-# Common values:
-#   Stainless Steel (430): 7.75 g/cm³ → 7.75e-6 kg/mm³
-#   Mild Steel:            7.85 g/cm³ → 7.85e-6 kg/mm³
-#   Aluminium:             2.70 g/cm³ → 2.70e-6 kg/mm³
-#   Brass:                 8.50 g/cm³ → 8.50e-6 kg/mm³
 DENSITY_KG_PER_MM3  = 7.75e-6           # Type 430 Stainless Steel
-
 OUTPUT_EXCEL_PATH   = "parts_output.xlsx"
 # ─────────────────────────────────────────────────────────────────────────────
 
+def extract_info_from_bom(bom_loader_file_path:str):
+    data = pd.read_excel(bom_loader_file_path, header=4)
+    data.dropna(axis=0, how="all", inplace=True)
+    return {
+        "Part No":data["Part Number"][5],
+        "Description":data["Description"][5],
+        "Volume":data["Production Volume"][5],
+        "Manufacturing Region":data["VPE"][5] + " " + data["Economic Date"][5]
+    }
 
 def extract_material_from_pdf(
     pdf_path: str,
@@ -114,6 +122,7 @@ def extract_weight_from_stp(stp_path: str, density_kg_per_mm3: float) -> dict:
 def write_to_excel(
     material_data: dict,
     stp_data: dict,
+    bom_loader_file_data: dict,
     pdf_filename: str,
     stp_filename: str,
     output_path: str,
@@ -157,20 +166,20 @@ def write_to_excel(
         cell.alignment = left_align
 
     # ── Title row ─────────────────────────────────────────────────────────────
-    ws.merge_cells("A1:D1")
+    ws.merge_cells("A1:B1")
     set_header(ws["A1"], "Parts Extraction Report")
     ws.row_dimensions[1].height = 28
 
     # ── Column headers ────────────────────────────────────────────────────────
     ws.row_dimensions[2].height = 20
-    for col, label in enumerate(["Field", "Value", "Confidence", "Source"], 1):
+    for col, label in enumerate(["Field", "Value"], 1):
         set_header(ws.cell(row=2, column=col), label)
 
     row = 3
 
     # ── Section: Document AI (PDF) ────────────────────────────────────────────
-    ws.merge_cells(f"A{row}:D{row}")
-    set_section(ws[f"A{row}"], f"  Document AI Extraction  ←  {os.path.basename(pdf_filename)}")
+    ws.merge_cells(f"A{row}:B{row}")
+    set_section(ws[f"A{row}"], "")
     ws.row_dimensions[row].height = 18
     row += 1
 
@@ -178,33 +187,40 @@ def write_to_excel(
         for field, info in material_data.items():
             set_label(ws.cell(row=row, column=1), field)
             set_value(ws.cell(row=row, column=2), info["value"])
-            set_value(ws.cell(row=row, column=3), f"{info['confidence'] * 100:.1f}%")
-            set_value(ws.cell(row=row, column=4), "Document AI")
             row += 1
     else:
         set_value(ws.cell(row=row, column=1), "No entities returned")
         row += 1
 
     # ── Section: CadQuery (STP) ───────────────────────────────────────────────
-    ws.merge_cells(f"A{row}:D{row}")
-    set_section(ws[f"A{row}"], f"  CadQuery Extraction  ←  {os.path.basename(stp_filename)}")
+    ws.merge_cells(f"A{row}:B{row}")
+    set_section(ws[f"A{row}"], "")
     ws.row_dimensions[row].height = 18
     row += 1
 
     stp_fields = [
         ("Weight (kg)",     stp_data["weight_kg"],               "—", "CadQuery (.stp)"),
-        ("Volume (mm³)",    stp_data["volume_mm3"],               "—", "CadQuery (.stp)"),
-        ("Length (mm)",     stp_data["dimensions"]["length_mm"],  "—", "CadQuery (.stp)"),
-        ("Width (mm)",      stp_data["dimensions"]["width_mm"],   "—", "CadQuery (.stp)"),
-        ("Height (mm)",     stp_data["dimensions"]["height_mm"],  "—", "CadQuery (.stp)"),
+        # ("Volume (mm³)",    stp_data["volume_mm3"],               "—", "CadQuery (.stp)"),
+        # ("Length (mm)",     stp_data["dimensions"]["length_mm"],  "—", "CadQuery (.stp)"),
+        # ("Width (mm)",      stp_data["dimensions"]["width_mm"],   "—", "CadQuery (.stp)"),
+        # ("Height (mm)",     stp_data["dimensions"]["height_mm"],  "—", "CadQuery (.stp)"),
         ("Density (kg/mm³)", DENSITY_KG_PER_MM3,                 "—", "Config"),
     ]
 
     for field, value, conf, source in stp_fields:
         set_label(ws.cell(row=row, column=1), field)
         set_value(ws.cell(row=row, column=2), value)
-        set_value(ws.cell(row=row, column=3), conf)
-        set_value(ws.cell(row=row, column=4), source)
+        # set_value(ws.cell(row=row, column=3), conf)
+        row += 1
+
+    ws.merge_cells(f"A{row}:B{row}")
+    set_section(ws[f"A{row}"], "")
+    ws.row_dimensions[row].height = 18
+    row += 1
+
+    for field, value in bom_loader_data.items():
+        set_label(ws.cell(row=row, column=1), field)
+        set_value(ws.cell(row=row, column=2), value)
         row += 1
 
     # ── Column widths ─────────────────────────────────────────────────────────
@@ -219,6 +235,7 @@ def write_to_excel(
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    bom_loader_data = extract_info_from_bom(BOM_LOADER_FILE_PATH)
 
     print("Step 1/3 — Extracting material from PDF via Document AI...")
     material_data = extract_material_from_pdf(
@@ -238,9 +255,12 @@ if __name__ == "__main__":
     write_to_excel(
         material_data = material_data,
         stp_data      = stp_data,
+        bom_loader_file_data=bom_loader_data,
         pdf_filename  = PDF_FILE_PATH,
         stp_filename  = STP_FILE_PATH,
         output_path   = OUTPUT_EXCEL_PATH,
     )
 
     print("\nDone! Open parts_output.xlsx to review.")
+
+
